@@ -1,0 +1,254 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - BudgetWise</title>
+    <link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="dashboard-wrapper">
+        <!-- Header -->
+        <header class="dashboard-header">
+            <div class="header-content">
+                <h1>💰 BudgetWise</h1>
+                <div class="header-actions">
+                    <span class="user-greeting">Hello, {{ user.username }}!</span>
+                    <a href="{% url 'accounts:logout' %}" class="btn-logout">Logout</a>
+                </div>
+            </div>
+        </header>
+
+        <!-- Messages -->
+        {% if messages %}
+        <div class="messages-container">
+            {% for message in messages %}
+            <div class="alert alert-{{ message.tags }}">
+                {{ message }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Main Dashboard -->
+        <div class="dashboard-container">
+            <!-- Left Section -->
+            <div class="left-section">
+                <!-- Set Monthly Budget Card -->
+                <div class="card budget-card">
+                    <h2 class="card-title">📊 Set Monthly Budget</h2>
+                    <form method="post" action="{% url 'expenses:set_budget' %}" class="budget-form">
+                        {% csrf_token %}
+                        <div class="form-group">
+                            <label>Month</label>
+                            {{ budget_form.month }}
+                        </div>
+                        <div class="form-group">
+                            <label>Budget Amount ($)</label>
+                            {{ budget_form.amount }}
+                        </div>
+                        <button type="submit" class="btn btn-primary">Save Budget</button>
+                    </form>
+                    
+                    {% if budget %}
+                    <div class="budget-summary">
+                        <div class="summary-item">
+                            <span class="label">Current Budget:</span>
+                            <span class="value">${{ budget_amount|floatformat:2 }}</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="label">Remaining:</span>
+                            <span class="value {% if remaining_budget < 0 %}negative{% endif %}">${{ remaining_budget|floatformat:2 }}</span>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Add Daily Expense Card -->
+                <div class="card expense-card">
+                    <h2 class="card-title">➕ Add Daily Expense</h2>
+                    <form method="post" action="{% url 'expenses:add_expense' %}" class="expense-form">
+                        {% csrf_token %}
+                        <div class="form-group">
+                            <label>Date</label>
+                            {{ expense_form.date }}
+                        </div>
+                        <div class="form-group">
+                            <label>Amount ($)</label>
+                            {{ expense_form.amount }}
+                        </div>
+                        <div class="form-group">
+                            <label>Category</label>
+                            {{ expense_form.category }}
+                        </div>
+                        <div class="form-group">
+                            <label>Note (Optional)</label>
+                            {{ expense_form.note }}
+                        </div>
+                        <button type="submit" class="btn btn-success">Add Expense</button>
+                    </form>
+                </div>
+
+                <!-- Today's Expenses -->
+                <div class="card today-expenses-card">
+                    <h2 class="card-title">📅 Today's Expenses</h2>
+                    {% if today_expenses %}
+                    <div class="expenses-list">
+                        {% for expense in today_expenses %}
+                        <div class="expense-item">
+                            <div class="expense-icon">{{ expense.category|slice:":1" }}</div>
+                            <div class="expense-details">
+                                <div class="expense-category">{{ expense.category }}</div>
+                                {% if expense.note %}
+                                <div class="expense-note">{{ expense.note|truncatewords:10 }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="expense-amount">${{ expense.amount|floatformat:2 }}</div>
+                            <form method="post" action="{% url 'expenses:delete_expense' expense.id %}" class="delete-form">
+                                {% csrf_token %}
+                                <button type="submit" class="btn-delete" onclick="return confirm('Delete this expense?')">🗑️</button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="empty-state">No expenses added today.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Right Section -->
+            <div class="right-section">
+                <!-- Budget Overview Card -->
+                <div class="card overview-card">
+                    <h2 class="card-title">📈 Budget Overview - {{ current_month }}</h2>
+                    
+                    <div class="overview-stats">
+                        <div class="stat-item">
+                            <div class="stat-label">Monthly Budget</div>
+                            <div class="stat-value budget">${{ budget_amount|floatformat:2 }}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Total Spent</div>
+                            <div class="stat-value spent">${{ total_spent|floatformat:2 }}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Remaining</div>
+                            <div class="stat-value remaining {% if remaining_budget < 0 %}negative{% endif %}">${{ remaining_budget|floatformat:2 }}</div>
+                        </div>
+                    </div>
+
+                    <!-- Chart -->
+                    <div class="chart-container">
+                        <canvas id="budgetChart"></canvas>
+                    </div>
+
+                    {% if remaining_budget < 0 %}
+                    <div class="alert alert-warning">
+                        ⚠️ You've exceeded your budget by ${{ remaining_budget|floatformat:2|slice:"1:" }}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- All Expenses This Month -->
+                <div class="card all-expenses-card">
+                    <h2 class="card-title">📋 All Expenses This Month</h2>
+                    {% if expenses %}
+                    <div class="expenses-list">
+                        {% for expense in expenses %}
+                        <div class="expense-item">
+                            <div class="expense-icon">
+                                {% if expense.category == 'Groceries' %}🛒
+                                {% elif expense.category == 'Rent' %}🏠
+                                {% elif expense.category == 'Travel' %}✈️
+                                {% elif expense.category == 'Food' %}🍔
+                                {% elif expense.category == 'Utilities' %}💡
+                                {% elif expense.category == 'Entertainment' %}🎬
+                                {% elif expense.category == 'Healthcare' %}🏥
+                                {% elif expense.category == 'Shopping' %}🛍️
+                                {% else %}📦{% endif %}
+                            </div>
+                            <div class="expense-details">
+                                <div class="expense-category">{{ expense.category }}</div>
+                                <div class="expense-date">{{ expense.date|date:"M d, Y" }}</div>
+                                {% if expense.note %}
+                                <div class="expense-note">{{ expense.note|truncatewords:15 }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="expense-amount">${{ expense.amount|floatformat:2 }}</div>
+                            <form method="post" action="{% url 'expenses:delete_expense' expense.id %}" class="delete-form">
+                                {% csrf_token %}
+                                <button type="submit" class="btn-delete" onclick="return confirm('Delete this expense?')">🗑️</button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="empty-state">No expenses recorded this month.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Chart.js Configuration
+        const ctx = document.getElementById('budgetChart').getContext('2d');
+        
+        const budgetAmount = {{ budget_amount|default:0 }};
+        const totalSpent = {{ total_spent|default:0 }};
+        const remaining = Math.max(budgetAmount - totalSpent, 0);
+        
+        const budgetChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Spent', 'Remaining'],
+                datasets: [{
+                    data: [totalSpent, remaining],
+                    backgroundColor: ['#ef4444', '#10b981'],
+                    borderWidth: 0,
+                    hoverOffset: 10
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            padding: 20,
+                            font: {
+                                size: 14
+                            }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                label += '$' + context.parsed.toFixed(2);
+                                return label;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Auto-hide messages after 5 seconds
+        setTimeout(() => {
+            const messages = document.querySelector('.messages-container');
+            if (messages) {
+                messages.style.opacity = '0';
+                setTimeout(() => messages.remove(), 300);
+            }
+        }, 5000);
+    </script>
+</body>
+</html>
