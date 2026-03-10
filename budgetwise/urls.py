@@ -9,5 +9,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('accounts/', include('accounts.urls')),
     path('', include('expenses.urls')),
+    path('ai/', include('ai_engine.urls')),
     path('', RedirectView.as_view(url='/accounts/login/', permanent=False)),
 ]

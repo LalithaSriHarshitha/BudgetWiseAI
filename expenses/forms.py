@@ -23,10 +23,13 @@ class BudgetForm(forms.ModelForm):
         widgets = {
             'amount': forms.NumberInput(attrs={
                 'class': 'form-input',
-                'placeholder': 'Enter budget amount',
+                'placeholder': 'Enter budget amount in ₹',
                 'step': '0.01',
                 'min': '0.01'
             }),
+        }
+        labels = {
+            'amount': 'Budget Amount (₹)'
         }
 
     def __init__(self, *args, **kwargs):
@@ -52,11 +55,11 @@ class BudgetForm(forms.ModelForm):
 
 class ExpenseForm(forms.ModelForm):
     """
-    Form for adding expenses.
+    Form for adding and editing expenses.
     """
     class Meta:
         model = Expense
-        fields = ['date', 'amount', 'category', 'note']
+        fields = ['date', 'amount', 'category', 'description']
         widgets = {
             'date': forms.DateInput(attrs={
                 'class': 'form-input',
@@ -64,18 +67,22 @@ class ExpenseForm(forms.ModelForm):
             }),
             'amount': forms.NumberInput(attrs={
                 'class': 'form-input',
-                'placeholder': 'Enter amount',
+                'placeholder': 'Enter amount in ₹',
                 'step': '0.01',
                 'min': '0.01'
             }),
             'category': forms.Select(attrs={
                 'class': 'form-input',
             }),
-            'note': forms.Textarea(attrs={
+            'description': forms.Textarea(attrs={
                 'class': 'form-input',
-                'placeholder': 'Add a note (optional)',
+                'placeholder': 'Add a description (optional)',
                 'rows': 3
             }),
+        }
+        labels = {
+            'description': 'Description (Optional)',
+            'amount': 'Amount (₹)'
         }
 
     def __init__(self, *args, **kwargs):
@@ -83,3 +90,49 @@ class ExpenseForm(forms.ModelForm):
         # Set default date to today
         if not self.instance.pk:
             self.fields['date'].initial = datetime.now().date()
+
+
+class ExpenseFilterForm(forms.Form):
+    """
+    Form for filtering expenses.
+    """
+    category = forms.ChoiceField(
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-input'}),
+        label='Category'
+    )
+    month = forms.ChoiceField(
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-input'}),
+        label='Month'
+    )
+    search = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'form-input',
+            'placeholder': 'Search description...'
+        }),
+        label='Search'
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        # Category choices
+        categories = [('', 'All Categories')] + list(Expense.CATEGORY_CHOICES)
+        self.fields['category'].choices = categories
+        
+        # Month choices (last 12 months)
+        months = [('', 'All Months')]
+        current_date = datetime.now()
+        for i in range(12):
+            month_date = datetime(current_date.year, current_date.month, 1)
+            if current_date.month - i <= 0:
+                month_date = datetime(current_date.year - 1, 12 + (current_date.month - i), 1)
+            else:
+                month_date = datetime(current_date.year, current_date.month - i, 1)
+            month_str = month_date.strftime('%Y-%m')
+            month_display = month_date.strftime('%B %Y')
+            months.append((month_str, month_display))
+        
+        self.fields['month'].choices = months
